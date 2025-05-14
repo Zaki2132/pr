@@ -1,0 +1,45 @@
+from falconpy import Hosts
+import time
+
+CLIENT_ID = "your_client_id"
+CLIENT_SECRET = "your_client_secret"
+
+hosts = Hosts(client_id=CLIENT_ID, client_secret=CLIENT_SECRET)
+
+device_ids = []
+offset = None
+limit = 100  # maximum recommandé
+
+print("Récupération des device IDs...")
+
+# Boucle pour récupérer tous les device IDs
+while True:
+    response = hosts.query_devices_by_filter(limit=limit, offset=offset)
+    if response["status_code"] != 200:
+        print("Erreur API:", response)
+        break
+
+    batch = response["body"].get("resources", [])
+    device_ids.extend(batch)
+
+    # Vérifie s'il y a une page suivante
+    next_offset = response["body"].get("meta", {}).get("pagination", {}).get("offset")
+    if not next_offset or not batch:
+        break  # Pas d'autres pages
+    offset = next_offset
+
+print(f"Total devices récupérés : {len(device_ids)}")
+
+# Récupérer les détails par blocs de 100 IDs (limite API)
+results = []
+for i in range(0, len(device_ids), 100):
+    chunk = device_ids[i:i+100]
+    details_response = hosts.get_device_details(ids=chunk)
+    if details_response["status_code"] == 200:
+        devices = details_response["body"]["resources"]
+        results.extend(devices)
+    else:
+        print("Erreur lors de la récupération des détails :", details_response)
+    time.sleep(1)  # petite pause pour éviter le rate limiting
+
+print(f"Détails récupérés pour {len(results)} devices")
