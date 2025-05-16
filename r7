@@ -1,0 +1,2 @@
+curl -H "X-Api-Key: YOUR_API_KEY" \
+     "https://eu.api.insight.rapid7.com/vm/v4/assets"
