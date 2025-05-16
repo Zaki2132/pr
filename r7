@@ -1,188 +1,28 @@
 import requests
-import csv
 
-# -------------------- CONFIG --------------------
-API_KEY = 'YOUR_API_KEY_HERE'  # Replace with your actual API key
+# 👉 Ta clé API
+API_KEY = 'VOTRE_API_KEY_ICI'
+
+# 👉 URL de base pour la région Europe
 BASE_URL = 'https://eu.api.insight.rapid7.com/vm/v4'
-HEADERS = {
-    'X-Api-Key': API_KEY,
-    'Content-Type': 'application/json'
-}
 
-# -------------------- API FUNCTIONS --------------------
+# 👉 Endpoint pour récupérer les assets
+url = f'{BASE_URL}/assets'
 
-def get_paginated_data(endpoint, page_size=100):
-    page = 0
-    all_data = []
-    while True:
-        url = f"{BASE_URL}/{endpoint}?page={page}&page_size={page_size}"
-        res = requests.get(url, headers=HEADERS)
-        res.raise_for_status()
-        data = res.json().get("resources", [])
-        if not data:
-            break
-        all_data.extend(data)
-        page += 1
-    return all_data
-
-def get_assets():
-    return get_paginated_data("assets")
-
-def get_all_vulnerabilities():
-    return get_paginated_data("vulnerabilities")
-
-def get_sites():
-    return get_paginated_data("sites")
-
-def get_scans():
-    return get_paginated_data("scans")
-
-def get_reports():
-    return get_paginated_data("reports")
-
-def get_asset_vulnerabilities(asset_id):
-    url = f"{BASE_URL}/assets/{asset_id}/vulnerabilities"
-    res = requests.get(url, headers=HEADERS)
-    res.raise_for_status()
-    return res.json().get("resources", [])
-
-# -------------------- CSV EXPORT FUNCTIONS --------------------
-
-def save_assets_to_csv(assets, filename="assets.csv"):
-    with open(filename, mode='w', newline='', encoding='utf-8') as f:
-        writer = csv.DictWriter(f, fieldnames=['ID', 'Hostname', 'IP Address', 'OS'])
-        writer.writeheader()
-        for asset in assets:
-            writer.writerow({
-                'ID': asset['id'],
-                'Hostname': asset.get('host_name', 'N/A'),
-                'IP Address': asset.get('ip_address', 'N/A'),
-                'OS': asset.get('os', 'N/A')
-            })
-
-def save_vulnerabilities_to_csv(vulns, filename="vulnerabilities.csv"):
-    with open(filename, mode='w', newline='', encoding='utf-8') as f:
-        writer = csv.DictWriter(f, fieldnames=['ID', 'Title', 'Description', 'CVSS', 'Critical'])
-        writer.writeheader()
-        for v in vulns:
-            writer.writerow({
-                'ID': v['id'],
-                'Title': v.get('title', 'N/A'),
-                'Description': v.get('description', 'N/A')[:100],
-                'CVSS': v.get('cvss_score', 0),
-                'Critical': 'Yes' if v.get('cvss_score', 0) >= 9 else 'No'
-            })
-
-def save_sites_to_csv(sites, filename="sites.csv"):
-    with open(filename, mode='w', newline='', encoding='utf-8') as f:
-        writer = csv.DictWriter(f, fieldnames=['ID', 'Name', 'Description'])
-        writer.writeheader()
-        for site in sites:
-            writer.writerow({
-                'ID': site['id'],
-                'Name': site.get('name', 'N/A'),
-                'Description': site.get('description', '')
-            })
-
-def save_scans_to_csv(scans, filename="scans.csv"):
-    with open(filename, mode='w', newline='', encoding='utf-8') as f:
-        writer = csv.DictWriter(f, fieldnames=['ID', 'Site ID', 'Status', 'Start Time'])
-        writer.writeheader()
-        for scan in scans:
-            writer.writerow({
-                'ID': scan['id'],
-                'Site ID': scan.get('site_id', 'N/A'),
-                'Status': scan.get('status', 'N/A'),
-                'Start Time': scan.get('start_time', 'N/A')
-            })
-
-def save_reports_to_csv(reports, filename="reports.csv"):
-    with open(filename, mode='w', newline='', encoding='utf-8') as f:
-        writer = csv.DictWriter(f, fieldnames=['ID', 'Name', 'Type'])
-        writer.writeheader()
-        for r in reports:
-            writer.writerow({
-                'ID': r['id'],
-                'Name': r.get('name', 'N/A'),
-                'Type': r.get('report_type', 'N/A')
-            })
-
-# -------------------- MAIN --------------------
-
-def main():
-    print("📦 Fetching assets...")
-    assets = get_assets()
-    save_assets_to_csv(assets)
-
-    print("🛡️ Fetching critical vulnerabilities...")
-    all_vulns = get_all_vulnerabilities()
-    critical_vulns = [v for v in all_vulns if v.get('cvss_score', 0) >= 9]
-    save_vulnerabilities_to_csv(critical_vulns)
-
-    print("🌐 Fetching sites...")
-    sites = get_sites()
-    save_sites_to_csv(sites)
-
-    print("🔍 Fetching scans...")
-    scans = get_scans()
-    save_scans_to_csv(scans)
-
-    print("📄 Fetching reports...")
-    reports = get_reports()
-    save_reports_to_csv(reports)
-
-    print("\n✅ All data exported to CSV files successfully.")
-
-
-
-import requests
-
-API_KEY = 'YOUR_API_KEY_HERE'
-BASE_URL = 'https://eu.api.insight.rapid7.com/vm/v4'
-HEADERS = {
-    'X-Api-Key': API_KEY,
-    'Content-Type': 'application/json'
-}
-
-def test_api_connection():
-    try:
-        url = f"{BASE_URL}/assets?page=0&page_size=1"
-        response = requests.get(url, headers=HEADERS)
-        if response.status_code == 200:
-            print("✅ API connection successful.")
-        else:
-            print(f"❌ API returned status code {response.status_code}: {response.text}")
-    except requests.exceptions.RequestException as e:
-        print(f"❌ Connection error: {e}")
-
-if __name__ == "__main__":
-    test_api_connection()
-
-if __name__ == "__main__":
-    main()
-
-
-
-import requests
-
-# Configuration
-REGION = "us"  # ou 'eu', 'ca', etc.
-BASE_URL = f"https://{REGION}.api.insight.rapid7.com/vm/v4"
-API_KEY = "votre_clé_api"  # Remplacez avec votre clé API
-
-# En-têtes d'authentification
+# 👉 Headers avec la clé API
 headers = {
-    "X-Api-Key": API_KEY,
-    "Accept": "application/json"
+    'X-Api-Key': API_KEY,
+    'Accept': 'application/json'
 }
 
-# Exemple : récupérer les assets
-response = requests.get(f"{BASE_URL}/assets", headers=headers)
+# 👉 Appel GET à l'API
+response = requests.get(url, headers=headers)
 
+# 👉 Vérification du résultat
 if response.status_code == 200:
     data = response.json()
-    print(f"Nombre d'assets : {data['metadata']['total']}")
-    for asset in data['resources']:
-        print(f"- ID: {asset['id']} | Adresse IP: {asset['ip']}")
+    print("✅ Requête réussie. Voici les premiers assets :\n")
+    for asset in data.get('resources', [])[:5]:  # Affiche les 5 premiers
+        print(f"ID: {asset.get('id')}, Hostname: {asset.get('host_name')}")
 else:
-    print(f"Erreur {response.status_code} : {response.text}")
+    print(f"❌ Erreur {response.status_code} : {response.text}")
