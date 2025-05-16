@@ -158,9 +158,31 @@ def test_api_connection():
 if __name__ == "__main__":
     test_api_connection()
 
-
-
-
-
 if __name__ == "__main__":
     main()
+
+
+
+import requests
+
+# Configuration
+REGION = "us"  # ou 'eu', 'ca', etc.
+BASE_URL = f"https://{REGION}.api.insight.rapid7.com/vm/v4"
+API_KEY = "votre_clé_api"  # Remplacez avec votre clé API
+
+# En-têtes d'authentification
+headers = {
+    "X-Api-Key": API_KEY,
+    "Accept": "application/json"
+}
+
+# Exemple : récupérer les assets
+response = requests.get(f"{BASE_URL}/assets", headers=headers)
+
+if response.status_code == 200:
+    data = response.json()
+    print(f"Nombre d'assets : {data['metadata']['total']}")
+    for asset in data['resources']:
+        print(f"- ID: {asset['id']} | Adresse IP: {asset['ip']}")
+else:
+    print(f"Erreur {response.status_code} : {response.text}")
