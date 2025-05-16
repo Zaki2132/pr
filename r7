@@ -133,5 +133,34 @@ def main():
 
     print("\n✅ All data exported to CSV files successfully.")
 
+
+
+import requests
+
+API_KEY = 'YOUR_API_KEY_HERE'
+BASE_URL = 'https://eu.api.insight.rapid7.com/vm/v4'
+HEADERS = {
+    'X-Api-Key': API_KEY,
+    'Content-Type': 'application/json'
+}
+
+def test_api_connection():
+    try:
+        url = f"{BASE_URL}/assets?page=0&page_size=1"
+        response = requests.get(url, headers=HEADERS)
+        if response.status_code == 200:
+            print("✅ API connection successful.")
+        else:
+            print(f"❌ API returned status code {response.status_code}: {response.text}")
+    except requests.exceptions.RequestException as e:
+        print(f"❌ Connection error: {e}")
+
+if __name__ == "__main__":
+    test_api_connection()
+
+
+
+
+
 if __name__ == "__main__":
     main()
