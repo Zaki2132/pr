@@ -1,2 +1,137 @@
-curl -H "X-Api-Key: YOUR_API_KEY" \
-     "https://eu.api.insight.rapid7.com/vm/v4/assets"
+import requests
+import csv
+
+# -------------------- CONFIGURATION --------------------
+API_KEY = 'TON_API_KEY_ICI'  # Remplace par ta vraie clé API
+BASE_URL = 'https://eu.api.insight.rapid7.com/vm/v4'
+HEADERS = {
+    'X-Api-Key': API_KEY,
+    'Content-Type': 'application/json'
+}
+
+# -------------------- API FUNCTIONS --------------------
+
+def get_paginated_data(endpoint, page_size=100):
+    page = 0
+    all_data = []
+    while True:
+        url = f"{BASE_URL}/{endpoint}?page={page}&page_size={page_size}"
+        res = requests.get(url, headers=HEADERS)
+        res.raise_for_status()
+        data = res.json().get("resources", [])
+        if not data:
+            break
+        all_data.extend(data)
+        page += 1
+    return all_data
+
+def get_assets():
+    return get_paginated_data("assets")
+
+def get_all_vulnerabilities():
+    return get_paginated_data("vulnerabilities")
+
+def get_sites():
+    return get_paginated_data("sites")
+
+def get_scans():
+    return get_paginated_data("scans")
+
+def get_reports():
+    return get_paginated_data("reports")
+
+def get_asset_vulnerabilities(asset_id):
+    url = f"{BASE_URL}/assets/{asset_id}/vulnerabilities"
+    res = requests.get(url, headers=HEADERS)
+    res.raise_for_status()
+    return res.json().get("resources", [])
+
+# -------------------- CSV EXPORT FUNCTIONS --------------------
+
+def save_assets_to_csv(assets, filename="assets.csv"):
+    with open(filename, mode='w', newline='', encoding='utf-8') as f:
+        writer = csv.DictWriter(f, fieldnames=['ID', 'Nom', 'IP', 'OS'])
+        writer.writeheader()
+        for asset in assets:
+            writer.writerow({
+                'ID': asset['id'],
+                'Nom': asset.get('host_name', 'N/A'),
+                'IP': asset.get('ip_address', 'N/A'),
+                'OS': asset.get('os', 'N/A')
+            })
+
+def save_vulnerabilities_to_csv(vulns, filename="vulnerabilites.csv"):
+    with open(filename, mode='w', newline='', encoding='utf-8') as f:
+        writer = csv.DictWriter(f, fieldnames=['ID', 'Titre', 'Description', 'CVSS', 'Critique'])
+        writer.writeheader()
+        for v in vulns:
+            writer.writerow({
+                'ID': v['id'],
+                'Titre': v.get('title', 'N/A'),
+                'Description': v.get('description', 'N/A')[:100],
+                'CVSS': v.get('cvss_score', 0),
+                'Critique': 'Oui' if v.get('cvss_score', 0) >= 9 else 'Non'
+            })
+
+def save_sites_to_csv(sites, filename="sites.csv"):
+    with open(filename, mode='w', newline='', encoding='utf-8') as f:
+        writer = csv.DictWriter(f, fieldnames=['ID', 'Nom', 'Description'])
+        writer.writeheader()
+        for site in sites:
+            writer.writerow({
+                'ID': site['id'],
+                'Nom': site.get('name', 'N/A'),
+                'Description': site.get('description', '')
+            })
+
+def save_scans_to_csv(scans, filename="scans.csv"):
+    with open(filename, mode='w', newline='', encoding='utf-8') as f:
+        writer = csv.DictWriter(f, fieldnames=['ID', 'Site ID', 'Statut', 'Début'])
+        writer.writeheader()
+        for scan in scans:
+            writer.writerow({
+                'ID': scan['id'],
+                'Site ID': scan.get('site_id', 'N/A'),
+                'Statut': scan.get('status', 'N/A'),
+                'Début': scan.get('start_time', 'N/A')
+            })
+
+def save_reports_to_csv(reports, filename="rapports.csv"):
+    with open(filename, mode='w', newline='', encoding='utf-8') as f:
+        writer = csv.DictWriter(f, fieldnames=['ID', 'Nom', 'Type'])
+        writer.writeheader()
+        for r in reports:
+            writer.writerow({
+                'ID': r['id'],
+                'Nom': r.get('name', 'N/A'),
+                'Type': r.get('report_type', 'N/A')
+            })
+
+# -------------------- MAIN --------------------
+
+def main():
+    print("📦 Récupération des actifs...")
+    assets = get_assets()
+    save_assets_to_csv(assets)
+
+    print("🛡️ Récupération des vulnérabilités critiques...")
+    all_vulns = get_all_vulnerabilities()
+    critical_vulns = [v for v in all_vulns if v.get('cvss_score', 0) >= 9]
+    save_vulnerabilities_to_csv(critical_vulns)
+
+    print("🌐 Récupération des sites...")
+    sites = get_sites()
+    save_sites_to_csv(sites)
+
+    print("🔍 Récupération des scans...")
+    scans = get_scans()
+    save_scans_to_csv(scans)
+
+    print("📄 Récupération des rapports...")
+    reports = get_reports()
+    save_reports_to_csv(reports)
+
+    print("\n✅ Données exportées avec succès dans des fichiers CSV.")
+
+if __name__ == "__main__":
+    main()
