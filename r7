@@ -1,28 +1,67 @@
 import requests
+import pandas as pd
 
-# 👉 Ta clé API
-API_KEY = 'VOTRE_API_KEY_ICI'
+# Configuration de base
+API_KEY = "VOTRE_API_KEY_ICI"
+BASE_URL = "https://eu.api.insight.rapid7.com/"
 
-# 👉 URL de base pour la région Europe
-BASE_URL = 'https://eu.api.insight.rapid7.com/vm/v4'
-
-# 👉 Endpoint pour récupérer les assets
-url = f'{BASE_URL}/assets'
-
-# 👉 Headers avec la clé API
-headers = {
-    'X-Api-Key': API_KEY,
-    'Accept': 'application/json'
+HEADERS = {
+    "X-Api-Key": API_KEY,
+    "Accept": "application/json"
 }
 
-# 👉 Appel GET à l'API
-response = requests.get(url, headers=headers)
+# ---------- Fonctions Génériques ----------
+def get_paginated_data(endpoint):
+    """Récupère toutes les données paginées depuis un endpoint donné"""
+    results = []
+    url = BASE_URL + endpoint
+    params = {"size": 500}  # taille de page maximum
+    while url:
+        response = requests.get(url, headers=HEADERS, params=params)
+        if response.status_code != 200:
+            print(f"Erreur lors de l'appel API : {response.status_code} - {response.text}")
+            break
+        data = response.json()
+        results.extend(data.get('resources', []))
+        url = data.get('nextPage', None)
+    return results
 
-# 👉 Vérification du résultat
-if response.status_code == 200:
-    data = response.json()
-    print("✅ Requête réussie. Voici les premiers assets :\n")
-    for asset in data.get('resources', [])[:5]:  # Affiche les 5 premiers
-        print(f"ID: {asset.get('id')}, Hostname: {asset.get('host_name')}")
-else:
-    print(f"❌ Erreur {response.status_code} : {response.text}")
+# ---------- Fonctions de Récupération ----------
+def get_assets():
+    return get_paginated_data("vulnerability_management/v1/assets")
+
+def get_vulnerabilities():
+    return get_paginated_data("vulnerability_management/v1/vulnerabilities")
+
+def get_scans():
+    return get_paginated_data("vulnerability_management/v1/scans")
+
+def get_sites():
+    return get_paginated_data("vulnerability_management/v1/sites")
+
+# ---------- Fonctions d’Export ----------
+def export_to_csv(data, filename):
+    if not data:
+        print(f"Aucune donnée à exporter pour {filename}")
+        return
+    df = pd.json_normalize(data)
+    df.to_csv(filename, index=False)
+    print(f"Exportation réussie vers {filename}")
+
+# ---------- Script Principal ----------
+if __name__ == "__main__":
+    print("Récupération des assets...")
+    assets = get_assets()
+    export_to_csv(assets, "assets.csv")
+
+    print("Récupération des vulnérabilités...")
+    vulnerabilities = get_vulnerabilities()
+    export_to_csv(vulnerabilities, "vulnerabilities.csv")
+
+    print("Récupération des scans...")
+    scans = get_scans()
+    export_to_csv(scans, "scans.csv")
+
+    print("Récupération des sites...")
+    sites = get_sites()
+    export_to_csv(sites, "sites.csv")
