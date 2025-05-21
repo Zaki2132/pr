@@ -64,3 +64,36 @@ if _name_ == "_main_":
     assets = fetch_all_assets_parallel(total_pages, workers=8)
     print(f"\n✅ Total assets récupérés : {len(assets)}")
     export_to_csv(assets)
+
+## get assets for a page
+
+import requests
+import json
+
+API_KEY = "raoid7"  # Remplace par ta clé complète
+url = "https://eu.api.insight.rapid7.com/vm/v4/integration/assets"
+
+headers = {
+    "Authorization": f"ApiKey {API_KEY}",
+    "Content-Type": "application/json",
+    "Accept": "application/json"
+}
+
+# === Corps de la requête ===
+body = {
+    "page": 5,     # La page que tu veux (0-indexed)
+    "size": 100    # Nombre d'éléments par page (max recommandé : 100)
+}
+
+response = requests.post(url, headers=headers, json=body)
+
+if response.status_code == 200:
+    data = response.json()
+    assets = data.get("data", [])
+    print(f"✅ Page 5 : {len(assets)} assets récupérés")
+    # Affiche un extrait
+    for asset in assets[:3]:
+        print(json.dumps(asset, indent=2))
+else:
+    print("❌ Erreur:", response.status_code)
+    print(response.text)
