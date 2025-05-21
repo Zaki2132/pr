@@ -1,99 +1,62 @@
 import requests
 import csv
-from concurrent.futures import ThreadPoolExecutor, as_completed
 
-API_KEY = "raoid7"  # Remplace par ta vraie clé
-URL = "https://eu.api.insight.rapid7.com/vm/v4/integration/assets"
+API_KEY = "raoid7"  # Remplace par ta vraie clé complète
+BASE_URL = "https://eu.api.insight.rapid7.com/vm/v4/integration/assets"
 HEADERS = {
     "Authorization": f"ApiKey {API_KEY}",
     "Content-Type": "application/json",
     "Accept": "application/json"
 }
 
-# === Fonction pour récupérer une page précise ===
-def fetch_page(p, size=500):
-    body = {"page": p, "size": size}
-    response = requests.post(URL, headers=HEADERS, json=body)
-    if response.status_code == 200:
+def get_all_assets():
+    url = BASE_URL
+    all_assets = []
+
+    while url:
+        print(f"Requête vers : {url}")
+        response = requests.post(url, headers=HEADERS, json={"filters": [], "size": 100})
+
+        if response.status_code != 200:
+            print(f"❌ Erreur {response.status_code}")
+            print(response.text)
+            break
+
         data = response.json()
-        return data.get("data", [])
-    else:
-        print(f"❌ Erreur page {p} : {response.status_code}")
-        return []
+        assets_batch = data.get("data", [])
+        all_assets.extend(assets_batch)
+        print(f"→ {len(assets_batch)} assets ajoutés (Total: {len(all_assets)})")
 
-# === Parallélisation correcte ===
-def fetch_all_assets_parallel(total_pages, workers=8):
-    assets = []
-    with ThreadPoolExecutor(max_workers=workers) as executor:
-        futures = {executor.submit(fetch_page, page): page for page in range(total_pages)}
-        for future in as_completed(futures):
-            page = futures[future]
-            try:
-                batch = future.result()
-                assets.extend(batch)
-                print(f"✅ Page {page} récupérée : {len(batch)} assets")
-            except Exception as e:
-                print(f"⚠ Erreur sur la page {page} : {e}")
-    return assets
+        # Trouver le lien vers la page suivante
+        next_url = None
+        for link in data.get("links", []):
+            if link.get("rel") == "next":
+                next_url = link.get("href")
+                break
+        url = next_url  # si None, on arrête
 
-# === Export CSV complet ===
-def export_to_csv(data, filename="assets_parallel.csv"):
-    if not data:
-        print("Aucune donnée à exporter.")
+    return all_assets
+
+def export_assets_to_csv(assets, filename="assets.csv"):
+    if not assets:
+        print("Aucun asset à exporter.")
         return
 
-    all_keys = set()
-    for item in data:
-        all_keys.update(item.keys())
+    # Collecter tous les champs (clé de tous les assets)
+    all_fields = set()
+    for asset in assets:
+        all_fields.update(asset.keys())
 
-    with open(filename, "w", newline='', encoding="utf-8") as f:
-        writer = csv.DictWriter(f, fieldnames=sorted(all_keys))
+    # Écriture dans le fichier CSV
+    with open(filename, "w", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=sorted(all_fields))
         writer.writeheader()
-        for item in data:
-            writer.writerow(item)
+        for asset in assets:
+            writer.writerow(asset)
 
-    print(f"✅ Export terminé dans {filename}")
+    print(f"✅ Export terminé : {filename} ({len(assets)} assets)")
 
-# === Lancement ===
+# === Main ===
 if _name_ == "_main_":
-    check = requests.post(URL, headers=HEADERS, json={"page": 0, "size": 1})
-    metadata = check.json().get("metadata", {})
-    total_pages = metadata.get("totalPages", 1)
-    print(f"➡ Total de pages à récupérer : {total_pages}")
-
-    assets = fetch_all_assets_parallel(total_pages, workers=8)
-    print(f"\n✅ Total assets récupérés : {len(assets)}")
-    export_to_csv(assets)
-
-## get assets for a page
-
-import requests
-import json
-
-API_KEY = "raoid7"  # Remplace par ta clé complète
-url = "https://eu.api.insight.rapid7.com/vm/v4/integration/assets"
-
-headers = {
-    "Authorization": f"ApiKey {API_KEY}",
-    "Content-Type": "application/json",
-    "Accept": "application/json"
-}
-
-# === Corps de la requête ===
-body = {
-    "page": 5,     # La page que tu veux (0-indexed)
-    "size": 100    # Nombre d'éléments par page (max recommandé : 100)
-}
-
-response = requests.post(url, headers=headers, json=body)
-
-if response.status_code == 200:
-    data = response.json()
-    assets = data.get("data", [])
-    print(f"✅ Page 5 : {len(assets)} assets récupérés")
-    # Affiche un extrait
-    for asset in assets[:3]:
-        print(json.dumps(asset, indent=2))
-else:
-    print("❌ Erreur:", response.status_code)
-    print(response.text)
+    assets = get_all_assets()
+    export_assets_to_csv(assets)
