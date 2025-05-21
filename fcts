@@ -76,3 +76,48 @@ def extract_all():
 
 if __name__ == "__main__":
     extract_all()
+
+
+
+
+
+
+
+import requests
+
+API_KEY = "raoid7"  # Remplace par la vraie clé complète
+url = "https://eu.api.insight.rapid7.com/vm/v4/integration/assets"
+headers = {
+    "Authorization": f"ApiKey {API_KEY}",
+    "Content-Type": "application/json",
+    "Accept": "application/json"
+}
+
+assets = []
+page = 0
+size = 100  # max recommandé
+
+while True:
+    body = {"page": page, "size": size}
+    response = requests.post(url, headers=headers, json=body)
+
+    if response.status_code != 200:
+        print("Erreur:", response.status_code)
+        print(response.text)
+        break
+
+    data = response.json()
+    batch = data.get("data", [])  # ou "resources", selon l’API
+    if not batch:
+        break
+
+    assets.extend(batch)
+    print(f"Page {page} récupérée : {len(batch)} assets")
+
+    if data.get("page", 0) >= data.get("totalPages", 1) - 1:
+        break
+
+    page += 1
+
+print(f"✅ Total assets récupérés : {len(assets)}")
+
