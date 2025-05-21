@@ -1,67 +1,23 @@
-import requests
-import pandas as pd
-
-# Configuration de base
-API_KEY = "VOTRE_API_KEY_ICI"
-BASE_URL = "https://eu.api.insight.rapid7.com/"
-
-HEADERS = {
-    "X-Api-Key": API_KEY,
-    "Accept": "application/json"
+body = {
+    "filters": [],
+    "page": 0,
+    "size": 100
 }
 
-# ---------- Fonctions Génériques ----------
-def get_paginated_data(endpoint):
-    """Récupère toutes les données paginées depuis un endpoint donné"""
-    results = []
-    url = BASE_URL + endpoint
-    params = {"size": 500}  # taille de page maximum
-    while url:
-        response = requests.get(url, headers=HEADERS, params=params)
-        if response.status_code != 200:
-            print(f"Erreur lors de l'appel API : {response.status_code} - {response.text}")
-            break
-        data = response.json()
-        results.extend(data.get('resources', []))
-        url = data.get('nextPage', None)
-    return results
+assets = []
 
-# ---------- Fonctions de Récupération ----------
-def get_assets():
-    return get_paginated_data("vulnerability_management/v1/assets")
+while True:
+    response = requests.post(url, headers=headers, json=body)
+    if response.status_code != 200:
+        print("Erreur:", response.status_code, response.text)
+        break
 
-def get_vulnerabilities():
-    return get_paginated_data("vulnerability_management/v1/vulnerabilities")
+    data = response.json()
+    assets.extend(data.get("resources", []))
 
-def get_scans():
-    return get_paginated_data("vulnerability_management/v1/scans")
+    if data.get("page", 0) >= data.get("totalPages", 1) - 1:
+        break
 
-def get_sites():
-    return get_paginated_data("vulnerability_management/v1/sites")
+    body["page"] += 1
 
-# ---------- Fonctions d’Export ----------
-def export_to_csv(data, filename):
-    if not data:
-        print(f"Aucune donnée à exporter pour {filename}")
-        return
-    df = pd.json_normalize(data)
-    df.to_csv(filename, index=False)
-    print(f"Exportation réussie vers {filename}")
-
-# ---------- Script Principal ----------
-if __name__ == "__main__":
-    print("Récupération des assets...")
-    assets = get_assets()
-    export_to_csv(assets, "assets.csv")
-
-    print("Récupération des vulnérabilités...")
-    vulnerabilities = get_vulnerabilities()
-    export_to_csv(vulnerabilities, "vulnerabilities.csv")
-
-    print("Récupération des scans...")
-    scans = get_scans()
-    export_to_csv(scans, "scans.csv")
-
-    print("Récupération des sites...")
-    sites = get_sites()
-    export_to_csv(sites, "sites.csv")
+print(f"Total assets récupérés : {len(assets)}")
