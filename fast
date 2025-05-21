@@ -1,0 +1,35 @@
+import requests
+
+API_KEY = "raoid7"  # remplace par ta vraie clé
+url = "https://eu.api.insight.rapid7.com/vm/v4/integration/assets"
+headers = {
+    "Authorization": f"ApiKey {API_KEY}",
+    "Content-Type": "application/json",
+    "Accept": "application/json"
+}
+
+assets = []
+cursor = None
+page = 0
+
+while True:
+    body = {"size": 500}
+    if cursor:
+        body["cursor"] = cursor
+
+    response = requests.post(url, headers=headers, json=body)
+    data = response.json()
+
+    batch = data.get("data", [])
+    if not batch:
+        break
+
+    assets.extend(batch)
+    page += 1
+    print(f"Page {page} récupérée : {len(batch)} assets")
+
+    cursor = data.get("metadata", {}).get("cursor")
+    if not cursor:
+        break
+
+print(f"\n✅ Total assets récupérés : {len(assets)}")
