@@ -1,0 +1,46 @@
+import requests
+import csv
+
+API_KEY = "raoid7"  # Remplace par ta vraie clé
+CONSOLE_URL = "https://your-console-url"  # ex: https://nexpose.mycompany.com
+
+headers = {
+    "X-Api-Key": API_KEY,
+    "Accept": "application/json"
+}
+
+def get_all_policies():
+    url = f"{CONSOLE_URL}/api/3/policies"
+    response = requests.get(url, headers=headers)
+
+    if response.status_code != 200:
+        print(f"❌ Erreur {response.status_code}")
+        print(response.text)
+        return []
+
+    data = response.json()
+    policies = data.get("resources", [])
+    print(f"✅ {len(policies)} policies récupérées.")
+    return policies
+
+def export_policies_to_csv(policies, filename="policies.csv"):
+    if not policies:
+        print("Aucune policy à exporter.")
+        return
+
+    all_fields = set()
+    for policy in policies:
+        all_fields.update(policy.keys())
+
+    with open(filename, "w", newline='', encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=sorted(all_fields))
+        writer.writeheader()
+        for policy in policies:
+            writer.writerow(policy)
+
+    print(f"✅ Export terminé : {filename}")
+
+# === Main ===
+if __name__ == "__main__":
+    policies = get_all_policies()
+    export_policies_to_csv(policies)
