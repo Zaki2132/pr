@@ -1,35 +1,68 @@
 import requests
+import csv
 
-API_KEY = "raoid7"  # remplace par ta vraie clé
-url = "https://eu.api.insight.rapid7.com/vm/v4/integration/assets"
-headers = {
+# === Configuration ===
+API_KEY = "raoid7"  # Remplace par ta vraie clé API complète
+BASE_URL = "https://eu.api.insight.rapid7.com/vm/v4/integration/assets"
+HEADERS = {
     "Authorization": f"ApiKey {API_KEY}",
     "Content-Type": "application/json",
     "Accept": "application/json"
 }
 
-assets = []
-cursor = None
-page = 0
+# === Récupération avec cursor-based pagination ===
+def fetch_all_assets():
+    all_assets = []
+    cursor = None
+    page = 0
+    size = 500  # max recommandé
 
-while True:
-    body = {"size": 500}
-    if cursor:
-        body["cursor"] = cursor
+    while True:
+        body = {"size": size}
+        if cursor:
+            body["cursor"] = cursor
 
-    response = requests.post(url, headers=headers, json=body)
-    data = response.json()
+        response = requests.post(BASE_URL, headers=HEADERS, json=body)
+        if response.status_code != 200:
+            print("❌ Erreur:", response.status_code)
+            print(response.text)
+            break
 
-    batch = data.get("data", [])
-    if not batch:
-        break
+        data = response.json()
+        batch = data.get("data", [])
+        if not batch:
+            break
 
-    assets.extend(batch)
-    page += 1
-    print(f"Page {page} récupérée : {len(batch)} assets")
+        all_assets.extend(batch)
+        page += 1
+        print(f"Page {page} récupérée : {len(batch)} assets")
 
-    cursor = data.get("metadata", {}).get("cursor")
-    if not cursor:
-        break
+        cursor = data.get("metadata", {}).get("cursor")
+        if not cursor:
+            break
 
-print(f"\n✅ Total assets récupérés : {len(assets)}")
+    print(f"\n✅ Total assets récupérés : {len(all_assets)}")
+    return all_assets
+
+# === Export CSV dynamique (tous les champs) ===
+def export_to_csv(data, filename="assets.csv"):
+    if not data:
+        print("Aucune donnée à exporter.")
+        return
+
+    all_keys = set()
+    for item in data:
+        all_keys.update(item.keys())
+
+    with open(filename, "w", newline='', encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=sorted(all_keys))
+        writer.writeheader()
+        for item in data:
+            writer.writerow(item)
+
+    print(f"✅ Export terminé dans {filename}")
+
+# === Exécution principale ===
+if _name_ == "_main_":
+    assets = fetch_all_assets()
+    export_to_csv(assets)
