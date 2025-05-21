@@ -26,15 +26,18 @@ print(f"Total assets récupérés : {len(assets)}")
 
 import csv
 
-# Choisis les champs à exporter
-fields = ["id", "ip", "last_scan_start", "last_scan_end"]
+# Step 1: collect all unique keys across all assets
+all_keys = set()
+for asset in assets:
+    all_keys.update(asset.keys())
 
-with open("assets.csv", "w", newline='', encoding='utf-8') as f:
-    writer = csv.DictWriter(f, fieldnames=fields)
+# Step 2: write all data to CSV using all discovered keys
+with open("assets_full.csv", "w", newline='', encoding='utf-8') as f:
+    writer = csv.DictWriter(f, fieldnames=sorted(all_keys))
     writer.writeheader()
 
     for asset in assets:
-        row = {field: asset.get(field, "") for field in fields}
-        writer.writerow(row)
+        writer.writerow(asset)
 
-print("Export terminé : assets.csv")
+print("✅ Exported all assets to assets_full.csv with all fields.")
+
