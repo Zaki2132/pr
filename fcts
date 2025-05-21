@@ -2,76 +2,77 @@ import requests
 import csv
 import os
 
-API_KEY = "raoid7"  # Remplace par ta clé API complète
-BASE_URL = "https://eu.api.insight.rapid7.com/vm/v4/integration"
+API_KEY = "raoid7"  # Remplace par ta vraie clé API
+BASE_URL = "https://eu.api.insight.rapid7.com"
 HEADERS = {
     "Authorization": f"ApiKey {API_KEY}",
     "Content-Type": "application/json",
     "Accept": "application/json"
 }
 
-# Fonction générique de récupération avec pagination
-def get_all_data(endpoint, filters=None):
+# Endpoints cibles
+ENDPOINTS = {
+    "assets": "/vm/v4/integration/assets",
+    "scans": "/vm/v4/integration/scan",
+    "scan_engines": "/vm/v4/integration/scan/engine",
+    "sites": "/vm/v4/integration/sites",
+    "vulnerabilities": "/vm/v4/integration/vulnerabilities"
+}
+
+# Export en CSV
+def export_to_csv(data_list, name):
+    if not data_list:
+        print(f"Aucune donnée pour {name}")
+        return
+
+    all_keys = set()
+    for item in data_list:
+        all_keys.update(item.keys())
+
+    filename = f"{name}.csv"
+    with open(filename, "w", newline='', encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=sorted(all_keys))
+        writer.writeheader()
+        for item in data_list:
+            writer.writerow(item)
+
+    print(f"✅ Exporté {len(data_list)} lignes dans {filename}")
+
+# Fonction générique pour récupérer des données paginées
+def fetch_paginated_data(endpoint, method="POST"):
+    url = BASE_URL + endpoint
+    data_list = []
     page = 0
     size = 100
-    all_data = []
-
     while True:
-        body = {
-            "filters": filters or [],
-            "page": page,
-            "size": size
-        }
-
-        response = requests.post(f"{BASE_URL}/{endpoint}", headers=HEADERS, json=body)
+        body = {"page": page, "size": size}
+        if method == "POST":
+            response = requests.post(url, headers=HEADERS, json=body)
+        else:
+            response = requests.get(url, headers=HEADERS, params=body)
 
         if response.status_code != 200:
-            print(f"❌ Erreur API {endpoint} : {response.status_code}")
+            print(f"❌ Erreur sur {endpoint} : {response.status_code}")
             print(response.text)
             break
 
         data = response.json()
-        page_data = data.get("data", [])
-        all_data.extend(page_data)
+        items = data.get("data", []) or data.get("resources", [])
+        data_list.extend(items)
 
-        metadata = data.get("metadata", {})
-        total_pages = metadata.get("totalPages", 1)
-
-        if page >= total_pages - 1:
+        # Pagination condition
+        if data.get("page", page) >= data.get("totalPages", 1) - 1:
             break
-
         page += 1
+    return data_list
 
-    print(f"✅ {len(all_data)} éléments récupérés depuis /{endpoint}")
-    return all_data
+# Lancer extraction pour tous les endpoints
+def extract_all():
+    for name, endpoint in ENDPOINTS.items():
+        print(f"\n📥 Extraction des {name}...")
+        method = "POST" if "scan" not in name else "GET"  # certains endpoints utilisent GET
+        data = fetch_paginated_data(endpoint, method=method)
+        export_to_csv(data, name)
 
-# Fonction pour exporter une liste de dictionnaires vers CSV
-def export_to_csv(data_list, filename):
-    if not data_list:
-        print(f"⚠️ Pas de données à exporter dans {filename}")
-        return
-
-    keys = set()
-    for item in data_list:
-        keys.update(item.keys())
-
-    with open(filename, "w", newline='', encoding='utf-8') as f:
-        writer = csv.DictWriter(f, fieldnames=sorted(keys))
-        writer.writeheader()
-        for row in data_list:
-            writer.writerow(row)
-
-    print(f"📁 Données exportées dans {filename}")
-
-# === Liste des types de données à extraire ===
-ENDPOINTS = {
-    "assets": "assets",
-    "scans": "scan",
-    "vulnerabilities": "vulnerabilities"
-    # Tu peux ajouter d'autres types ici si l'API les supporte
-}
-
-# === Extraction et export boucle principale ===
-for name, endpoint in ENDPOINTS.items():
-    data = get_all_data(endpoint)
-    export_to_csv(data, f"{name}.csv")
+if __name__ == "__main__":
+    extract_all()
