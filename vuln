@@ -1,0 +1,60 @@
+import requests
+import csv
+
+API_KEY = "raoid7"  # Remplace par ta vraie clé
+BASE_URL = "https://eu.api.insight.rapid7.com/vm/v4/integration/vulnerabilities"
+HEADERS = {
+    "Authorization": f"ApiKey {API_KEY}",
+    "Content-Type": "application/json",
+    "Accept": "application/json"
+}
+
+def get_all_vulnerabilities():
+    url = BASE_URL
+    all_vulns = []
+
+    while url:
+        print(f"Requête vers : {url}")
+        response = requests.post(url, headers=HEADERS, json={"filters": [], "size": 100})
+
+        if response.status_code != 200:
+            print(f"❌ Erreur {response.status_code}")
+            print(response.text)
+            break
+
+        data = response.json()
+        vulns_batch = data.get("data", [])
+        all_vulns.extend(vulns_batch)
+        print(f"→ {len(vulns_batch)} vulnérabilités ajoutées (Total: {len(all_vulns)})")
+
+        # Gérer la pagination avec les links (comme pour les assets)
+        next_url = None
+        for link in data.get("links", []):
+            if link.get("rel") == "next":
+                next_url = link.get("href")
+                break
+        url = next_url
+
+    return all_vulns
+
+def export_vulns_to_csv(vulns, filename="vulnerabilities.csv"):
+    if not vulns:
+        print("Aucune vulnérabilité à exporter.")
+        return
+
+    all_fields = set()
+    for vuln in vulns:
+        all_fields.update(vuln.keys())
+
+    with open(filename, "w", newline='', encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=sorted(all_fields))
+        writer.writeheader()
+        for vuln in vulns:
+            writer.writerow(vuln)
+
+    print(f"✅ Export terminé : {filename} ({len(vulns)} vulnérabilités)")
+
+# === Main ===
+if __name__ == "__main__":
+    vulns = get_all_vulnerabilities()
+    export_vulns_to_csv(vulns)
