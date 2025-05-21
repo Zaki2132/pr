@@ -1,0 +1,77 @@
+import requests
+import csv
+import os
+
+API_KEY = "raoid7"  # Remplace par ta clé API complète
+BASE_URL = "https://eu.api.insight.rapid7.com/vm/v4/integration"
+HEADERS = {
+    "Authorization": f"ApiKey {API_KEY}",
+    "Content-Type": "application/json",
+    "Accept": "application/json"
+}
+
+# Fonction générique de récupération avec pagination
+def get_all_data(endpoint, filters=None):
+    page = 0
+    size = 100
+    all_data = []
+
+    while True:
+        body = {
+            "filters": filters or [],
+            "page": page,
+            "size": size
+        }
+
+        response = requests.post(f"{BASE_URL}/{endpoint}", headers=HEADERS, json=body)
+
+        if response.status_code != 200:
+            print(f"❌ Erreur API {endpoint} : {response.status_code}")
+            print(response.text)
+            break
+
+        data = response.json()
+        page_data = data.get("data", [])
+        all_data.extend(page_data)
+
+        metadata = data.get("metadata", {})
+        total_pages = metadata.get("totalPages", 1)
+
+        if page >= total_pages - 1:
+            break
+
+        page += 1
+
+    print(f"✅ {len(all_data)} éléments récupérés depuis /{endpoint}")
+    return all_data
+
+# Fonction pour exporter une liste de dictionnaires vers CSV
+def export_to_csv(data_list, filename):
+    if not data_list:
+        print(f"⚠️ Pas de données à exporter dans {filename}")
+        return
+
+    keys = set()
+    for item in data_list:
+        keys.update(item.keys())
+
+    with open(filename, "w", newline='', encoding='utf-8') as f:
+        writer = csv.DictWriter(f, fieldnames=sorted(keys))
+        writer.writeheader()
+        for row in data_list:
+            writer.writerow(row)
+
+    print(f"📁 Données exportées dans {filename}")
+
+# === Liste des types de données à extraire ===
+ENDPOINTS = {
+    "assets": "assets",
+    "scans": "scan",
+    "vulnerabilities": "vulnerabilities"
+    # Tu peux ajouter d'autres types ici si l'API les supporte
+}
+
+# === Extraction et export boucle principale ===
+for name, endpoint in ENDPOINTS.items():
+    data = get_all_data(endpoint)
+    export_to_csv(data, f"{name}.csv")
