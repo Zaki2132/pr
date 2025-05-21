@@ -1,0 +1,59 @@
+import requests
+import csv
+
+API_KEY = "raoid7"  # Remplace par ta vraie clé
+BASE_URL = "https://eu.api.insight.rapid7.com/vm/v4/integration/scan"
+HEADERS = {
+    "Authorization": f"ApiKey {API_KEY}",
+    "Accept": "application/json"
+}
+
+def get_all_scans():
+    url = BASE_URL
+    all_scans = []
+
+    while url:
+        print(f"Requête vers : {url}")
+        response = requests.get(url, headers=HEADERS)
+
+        if response.status_code != 200:
+            print(f"❌ Erreur {response.status_code}")
+            print(response.text)
+            break
+
+        data = response.json()
+        scans_batch = data.get("data", [])
+        all_scans.extend(scans_batch)
+        print(f"→ {len(scans_batch)} scans ajoutés (Total: {len(all_scans)})")
+
+        # Pagination via lien "next"
+        next_url = None
+        for link in data.get("links", []):
+            if link.get("rel") == "next":
+                next_url = link.get("href")
+                break
+        url = next_url
+
+    return all_scans
+
+def export_scans_to_csv(scans, filename="scans.csv"):
+    if not scans:
+        print("Aucun scan à exporter.")
+        return
+
+    all_fields = set()
+    for scan in scans:
+        all_fields.update(scan.keys())
+
+    with open(filename, "w", newline='', encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=sorted(all_fields))
+        writer.writeheader()
+        for scan in scans:
+            writer.writerow(scan)
+
+    print(f"✅ Export terminé : {filename} ({len(scans)} scans)")
+
+# === Main ===
+if __name__ == "__main__":
+    scans = get_all_scans()
+    export_scans_to_csv(scans)
