@@ -1,84 +1,8 @@
 import requests
 import csv
-
-# === Configuration ===
-API_KEY = "raoid7"  # Remplace par ta vraie clé API complète
-BASE_URL = "https://eu.api.insight.rapid7.com/vm/v4/integration/assets"
-HEADERS = {
-    "Authorization": f"ApiKey {API_KEY}",
-    "Content-Type": "application/json",
-    "Accept": "application/json"
-}
-
-# === Récupération avec cursor-based pagination ===
-def fetch_all_assets():
-    all_assets = []
-    cursor = None
-    page = 0
-    size = 500  # max recommandé
-
-    while True:
-        body = {"size": size}
-        if cursor:
-            body["cursor"] = cursor
-
-        response = requests.post(BASE_URL, headers=HEADERS, json=body)
-        if response.status_code != 200:
-            print("❌ Erreur:", response.status_code)
-            print(response.text)
-            break
-
-        data = response.json()
-        batch = data.get("data", [])
-        if not batch:
-            break
-
-        all_assets.extend(batch)
-        page += 1
-        print(f"Page {page} récupérée : {len(batch)} assets")
-
-        cursor = data.get("metadata", {}).get("cursor")
-        if not cursor:
-            break
-
-    print(f"\n✅ Total assets récupérés : {len(all_assets)}")
-    return all_assets
-
-# === Export CSV dynamique (tous les champs) ===
-def export_to_csv(data, filename="assets.csv"):
-    if not data:
-        print("Aucune donnée à exporter.")
-        return
-
-    all_keys = set()
-    for item in data:
-        all_keys.update(item.keys())
-
-    with open(filename, "w", newline='', encoding="utf-8") as f:
-        writer = csv.DictWriter(f, fieldnames=sorted(all_keys))
-        writer.writeheader()
-        for item in data:
-            writer.writerow(item)
-
-    print(f"✅ Export terminé dans {filename}")
-
-# === Exécution principale ===
-if _name_ == "_main_":
-    assets = fetch_all_assets()
-    export_to_csv(assets)\
-
-
-
-
-
-
-
-
-import requests
-import csv
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-API_KEY = "raoid7"  # Ta clé API complète
+API_KEY = "raoid7"  # Remplace par ta vraie clé
 URL = "https://eu.api.insight.rapid7.com/vm/v4/integration/assets"
 HEADERS = {
     "Authorization": f"ApiKey {API_KEY}",
@@ -86,29 +10,33 @@ HEADERS = {
     "Accept": "application/json"
 }
 
-# === Récupère 1 page donnée ===
-def fetch_page(page, size=500):
-    body = {"page": page, "size": size}
+# === Fonction pour récupérer une page précise ===
+def fetch_page(p, size=500):
+    body = {"page": p, "size": size}
     response = requests.post(URL, headers=HEADERS, json=body)
     if response.status_code == 200:
         data = response.json()
         return data.get("data", [])
     else:
-        print(f"❌ Erreur page {page} : {response.status_code}")
+        print(f"❌ Erreur page {p} : {response.status_code}")
         return []
 
-# === Fonction principale avec threads ===
+# === Parallélisation correcte ===
 def fetch_all_assets_parallel(total_pages, workers=8):
     assets = []
     with ThreadPoolExecutor(max_workers=workers) as executor:
-        futures = [executor.submit(fetch_page, page) for page in range(total_pages)]
-        for i, future in enumerate(as_completed(futures)):
-            batch = future.result()
-            assets.extend(batch)
-            print(f"Page {i+1}/{total_pages} récupérée : {len(batch)} assets")
+        futures = {executor.submit(fetch_page, page): page for page in range(total_pages)}
+        for future in as_completed(futures):
+            page = futures[future]
+            try:
+                batch = future.result()
+                assets.extend(batch)
+                print(f"✅ Page {page} récupérée : {len(batch)} assets")
+            except Exception as e:
+                print(f"⚠ Erreur sur la page {page} : {e}")
     return assets
 
-# === Export CSV (tous les champs dynamiques) ===
+# === Export CSV complet ===
 def export_to_csv(data, filename="assets_parallel.csv"):
     if not data:
         print("Aucune donnée à exporter.")
@@ -128,9 +56,9 @@ def export_to_csv(data, filename="assets_parallel.csv"):
 
 # === Lancement ===
 if _name_ == "_main_":
-    # Faire d’abord UNE requête pour obtenir le total
     check = requests.post(URL, headers=HEADERS, json={"page": 0, "size": 1})
-    total_pages = check.json().get("metadata", {}).get("totalPages", 1)
+    metadata = check.json().get("metadata", {})
+    total_pages = metadata.get("totalPages", 1)
     print(f"➡ Total de pages à récupérer : {total_pages}")
 
     assets = fetch_all_assets_parallel(total_pages, workers=8)
