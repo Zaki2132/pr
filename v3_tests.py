@@ -74,18 +74,16 @@ def merge_and_classify(hist: pd.DataFrame,
     df = hist.merge(scans, on="scan_id", how="left", validate="m:1")
     # Force scan_name en str pour éviter mix dtype
     df["scan_name"] = df["scan_name"].astype(str)
+    # Initialise la colonne type à None
+    df["type"] = None
     # Regex pour vulnérabilité et auth/unauth
-    vuln_re = r"(?i)\b(vuln|vulnerability|vun)\b"
-    auth_re = r"(?i)\b(auth|unauth)\b"
-    df["type"] = np.where(
-        df["scan_name"].str.contains(vuln_re, regex=True, na=False),
-        "vuln",
-        np.where(
-            df["scan_name"].str.contains(auth_re, regex=True, na=False),
-            "auth",
-            np.nan
-        )
-    )
+    vuln_re = r"(?i)(vuln|vulnerability|vun)"
+    auth_re = r"(?i)(auth|unauth)"
+    # Applique les masques successivement
+    mask_vuln = df["scan_name"].str.contains(vuln_re, regex=True, na=False)
+    mask_auth = df["scan_name"].str.contains(auth_re, regex=True, na=False)
+    df.loc[mask_vuln, "type"] = "vuln"
+    df.loc[~mask_vuln & mask_auth, "type"] = "auth"
     return df
 
 
