@@ -1,4 +1,3 @@
-
 import pandas as pd
 import json
 import numpy as np
@@ -26,18 +25,31 @@ def extract_history(assets: pd.DataFrame,
     """
     records = []
     for _, row in assets.iterrows():
-        raw = row.get(history_col)
+        raw = row[history_col]
         if pd.isna(raw) or not raw.strip():
             continue
         try:
             items = json.loads(raw.replace("'", '"'))
         except json.JSONDecodeError:
+            # si le JSON est malformé, on skip
             continue
-        for it in items:
+        for entry in items:
+            # Gestion des clés 'scanId' ou 'scanID'
+            scan_id = entry.get("scanId") or entry.get("scanID")
+            if scan_id is None:
+                continue
+            try:
+                scan_id = int(scan_id)
+            except (ValueError, TypeError):
+                continue
+            # Date du scan extraite de l'historique
+            scan_date = pd.to_datetime(entry.get("date"), errors="coerce")
+            if pd.isna(scan_date):
+                continue
             records.append({
                 "asset_id": row[id_col],
-                "scan_id":   int(it["scanId"]),
-                "scan_date": pd.to_datetime(it["date"])
+                "scan_id": scan_id,
+                "scan_date": scan_date
             })
     return pd.DataFrame(records)
 
@@ -52,7 +64,7 @@ def merge_and_classify(hist: pd.DataFrame,
     :return: merged DataFrame avec colonne 'type'
     """
     df = hist.merge(scans, on="scan_id", how="left", validate="m:1")
-    # Regex de classification
+    # Regex pour vulnérabilité et auth/unauth
     vuln_re = r"(?i)\b(vuln|vulnerability|vun)\b"
     auth_re = r"(?i)\b(auth|unauth)\b"
     df["type"] = np.where(
@@ -69,7 +81,7 @@ def merge_and_classify(hist: pd.DataFrame,
 def aggregate_latest(df: pd.DataFrame) -> pd.DataFrame:
     """
     Agrège pour garder la date max par asset_id et par type.
-    :param df: DataFrame issu de merge_and_classify, avec 'asset_id','scan_date','type'
+    :param df: DataFrame issu de merge_and_classify
     :return: DataFrame wide ['asset_id','last_vuln_scan','last_auth_or_unauth_scan']
     """
     latest = (
@@ -103,9 +115,13 @@ def merge_into_assets(assets: pd.DataFrame,
         validate="1:1"
     )
 
-def main(assets_csv: str, scans_csv: str) -> pd.DataFrame:
+def compute_asset_scan_dates(assets_csv: str, scans_csv: str) -> pd.DataFrame:
     """
     Point d'entrée : lit, transforme, agrège et retourne le DataFrame final.
+    :param assets_csv: chemin vers dim_assets.csv
+    :param scans_csv:  chemin vers dim_scans.csv
+    :return: DataFrame de dim_assets + colonnes
+             'last_vuln_scan' et 'last_auth_or_unauth_scan'
     """
     assets, scans = load_data(assets_csv, scans_csv)
     hist          = extract_history(assets)
@@ -114,7 +130,6 @@ def main(assets_csv: str, scans_csv: str) -> pd.DataFrame:
     result        = merge_into_assets(assets, latest)
     return result
 
-if __name__ == "__main__":
-    df_final = main("dim_assets.csv", "dim_scans.csv")
-    # On n'affiche que les colonnes clés pour vérification :
-    print(df_final[["id", "last_vuln_scan", "last_auth_or_unauth_scan"]])
+# Exemple d'utilisation :
+# df_final = compute_asset_scan_dates("dim_assets.csv", "dim_scans.csv")
+# print(df_final[["id", "last_vuln_scan", "last_auth_or_unauth_scan"]])
