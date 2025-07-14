@@ -2,26 +2,29 @@ import pandas as pd
 import json
 import numpy as np
 
-def load_data(assets_csv: str, scans_csv: str) -> tuple[pd.DataFrame, pd.DataFrame]:
+def load_data(assets_csv: str, scans_csv: str,
+              scan_id_col: str, scan_name_col: str, scan_date_col: str
+             ) -> tuple[pd.DataFrame, pd.DataFrame]:
     """
-    Charge les deux CSV.
-    :param assets_csv: chemin vers dim_assets.csv
-    :param scans_csv:  chemin vers dim_scans.csv
-    :return: (assets_df, scans_df)
+    Charge le CSV des assets et renomme les colonnes clés de dim_scans
+    pour unifier l'ID, le nom et la date du scan.
     """
     assets = pd.read_csv(assets_csv)
-    scans  = pd.read_csv(scans_csv)
+    scans  = (pd.read_csv(scans_csv)
+                .rename(columns={
+                    scan_id_col:   "scan_id",
+                    scan_name_col: "scan_name",
+                    scan_date_col: "scan_date"
+                }))
     return assets, scans
 
 def extract_history(assets: pd.DataFrame,
                     id_col: str = "id",
-                    history_col: str = "history") -> pd.DataFrame:
+                    history_col: str = "history"
+                   ) -> pd.DataFrame:
     """
-    Transforme la colonne JSON-like 'history' en DataFrame exploded.
-    :param assets: DataFrame des assets
-    :param id_col: nom de la colonne identifiant l'asset
-    :param history_col: nom de la colonne historique
-    :return: DataFrame avec colonnes ['asset_id','scan_id','scan_date']
+    Explose la colonne JSON-like 'history' en DataFrame avec colonnes
+    ['asset_id','scan_id','scan_date'].
     """
     records = []
     for _, row in assets.iterrows():
@@ -31,47 +34,40 @@ def extract_history(assets: pd.DataFrame,
         try:
             items = json.loads(raw.replace("'", '"'))
         except json.JSONDecodeError:
-            # si le JSON est malformé, on skip
             continue
         for entry in items:
-            # Gestion des clés 'scanId' ou 'scanID'
-            scan_id = entry.get("scanId") or entry.get("scanID")
-            if scan_id is None:
+            sid = entry.get("scanId") or entry.get("scanID")
+            if sid is None:
                 continue
             try:
-                scan_id = int(scan_id)
+                sid = int(sid)
             except (ValueError, TypeError):
                 continue
-            # Date du scan extraite de l'historique
-            scan_date = pd.to_datetime(entry.get("date"), errors="coerce")
-            if pd.isna(scan_date):
+            dt = pd.to_datetime(entry.get("date"), errors="coerce")
+            if pd.isna(dt):
                 continue
             records.append({
                 "asset_id": row[id_col],
-                "scan_id": scan_id,
-                "scan_date": scan_date
+                "scan_id":  sid,
+                "scan_date": dt
             })
     return pd.DataFrame(records)
 
 def merge_and_classify(hist: pd.DataFrame,
-                       scans: pd.DataFrame,
-                       name_col: str = "scan_name") -> pd.DataFrame:
+                       scans: pd.DataFrame
+                      ) -> pd.DataFrame:
     """
-    Joint history exploded à dim_scans et ajoute une colonne 'type' ("vuln" ou "auth").
-    :param hist: DataFrame exploded issu de extract_history
-    :param scans: DataFrame dim_scans
-    :param name_col: nom de la colonne de nom de scan
-    :return: merged DataFrame avec colonne 'type'
+    Joint l'historique explosé à dim_scans, puis classe chaque ligne
+    en 'vuln' ou 'auth' selon le nom du scan.
     """
     df = hist.merge(scans, on="scan_id", how="left", validate="m:1")
-    # Regex pour vulnérabilité et auth/unauth
     vuln_re = r"(?i)\b(vuln|vulnerability|vun)\b"
     auth_re = r"(?i)\b(auth|unauth)\b"
     df["type"] = np.where(
-        df[name_col].str.contains(vuln_re, regex=True, na=False),
+        df["scan_name"].str.contains(vuln_re, regex=True, na=False),
         "vuln",
         np.where(
-            df[name_col].str.contains(auth_re, regex=True, na=False),
+            df["scan_name"].str.contains(auth_re, regex=True, na=False),
             "auth",
             np.nan
         )
@@ -80,9 +76,8 @@ def merge_and_classify(hist: pd.DataFrame,
 
 def aggregate_latest(df: pd.DataFrame) -> pd.DataFrame:
     """
-    Agrège pour garder la date max par asset_id et par type.
-    :param df: DataFrame issu de merge_and_classify
-    :return: DataFrame wide ['asset_id','last_vuln_scan','last_auth_or_unauth_scan']
+    Agrège pour garder la date max par asset_id et par type
+    ('vuln' et 'auth') et retourne un DataFrame large.
     """
     latest = (
         df.dropna(subset=["type"])
@@ -99,13 +94,11 @@ def aggregate_latest(df: pd.DataFrame) -> pd.DataFrame:
 
 def merge_into_assets(assets: pd.DataFrame,
                       latest: pd.DataFrame,
-                      id_col: str = "id") -> pd.DataFrame:
+                      id_col: str = "id"
+                     ) -> pd.DataFrame:
     """
-    Fusionne les dates calculées dans le DataFrame assets original.
-    :param assets: DataFrame original
-    :param latest: DataFrame wide des dates max
-    :param id_col: nom de la colonne asset_id dans assets
-    :return: DataFrame enrichi
+    Ajoute les colonnes 'last_vuln_scan' et
+    'last_auth_or_unauth_scan' dans le DataFrame assets.
     """
     return assets.merge(
         latest,
@@ -115,21 +108,31 @@ def merge_into_assets(assets: pd.DataFrame,
         validate="1:1"
     )
 
-def compute_asset_scan_dates(assets_csv: str, scans_csv: str) -> pd.DataFrame:
+def compute_asset_scan_dates(assets_csv: str,
+                             scans_csv: str,
+                             scan_id_col: str = "id",
+                             scan_name_col: str = "scanName",
+                             scan_date_col: str = "startTime"
+                            ) -> pd.DataFrame:
     """
-    Point d'entrée : lit, transforme, agrège et retourne le DataFrame final.
-    :param assets_csv: chemin vers dim_assets.csv
-    :param scans_csv:  chemin vers dim_scans.csv
-    :return: DataFrame de dim_assets + colonnes
-             'last_vuln_scan' et 'last_auth_or_unauth_scan'
+    Lit, transforme et agrège les données pour retourner le DataFrame final
+    contenant dim_assets + 'last_vuln_scan' et 'last_auth_or_unauth_scan'.
     """
-    assets, scans = load_data(assets_csv, scans_csv)
-    hist          = extract_history(assets)
-    merged        = merge_and_classify(hist, scans)
-    latest        = aggregate_latest(merged)
-    result        = merge_into_assets(assets, latest)
-    return result
+    assets, scans = load_data(
+        assets_csv, scans_csv,
+        scan_id_col, scan_name_col, scan_date_col
+    )
+    hist   = extract_history(assets)
+    merged = merge_and_classify(hist, scans)
+    latest = aggregate_latest(merged)
+    return merge_into_assets(assets, latest)
 
-# Exemple d'utilisation :
-# df_final = compute_asset_scan_dates("dim_assets.csv", "dim_scans.csv")
-# print(df_final[["id", "last_vuln_scan", "last_auth_or_unauth_scan"]])
+if __name__ == "__main__":
+    df_final = compute_asset_scan_dates(
+        "dim_assets.csv",
+        "dim_scans.csv",
+        scan_id_col="id",
+        scan_name_col="scanName",
+        scan_date_col="startTime"
+    )
+    print(df_final[["id", "last_vuln_scan", "last_auth_or_unauth_scan"]])
