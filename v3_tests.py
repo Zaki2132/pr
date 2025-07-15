@@ -10,7 +10,6 @@ scans  = pd.read_csv('dim_scans.csv', parse_dates=['startTime', 'endTime'])
 scans.rename(columns={'id': 'scan_id'}, inplace=True)
 
 # 3. Déserialisation de la colonne history et explosion en lignes asset↔scan
-#    On suppose que history est toujours une liste d'entiers, sinon ajuster la lambda.
 assets['history'] = assets['history'].apply(ast.literal_eval)
 asset_scans = (
     assets[['id', 'history']]
@@ -18,19 +17,25 @@ asset_scans = (
     .rename(columns={'id': 'asset_id', 'history': 'scan_id'})
 )
 
-# 4. Uniformiser les types en chaîne de caractères (str)
-#    => plus de conflit object vs int
+# 4. Uniformisation du type de scan_id en str pour éviter les conflits
 asset_scans['scan_id'] = asset_scans['scan_id'].astype(str)
 scans   ['scan_id'] = scans   ['scan_id'].astype(str)
 
-# 5. Jointure pour récupérer les métadonnées de chaque scan
+# 5. Jointure pour récupérer les détails de chaque scan
 df = asset_scans.merge(scans, on='scan_id', how='left')
 
-# 6. Catégorisation en deux types de scan
+# 6. S’assurer que scanName est une chaîne (remplace NaN par '')
+df['scanName'] = df['scanName'].fillna('').astype(str)
+
+# 7. Catégorisation en deux types de scan
 def categorize(name: str) -> str | None:
-    # On traite "Audit" dans vulnérabilités et "Discovery"/"Auth"/"Unauth" en découverte
+    # si vide ou non-chaîne, on ignore
+    if not name:
+        return None
+    # vulnérabilités : on inclut aussi les “Audit”
     if re.search(r'Vun|Vuln|Audit', name, re.IGNORECASE):
         return 'last_vulnerability_scan'
+    # découverte/auth : Discovery, Auth, Unauth
     if re.search(r'Auth|Unauth|Discovery', name, re.IGNORECASE):
         return 'last_discovery_scan'
     return None
@@ -38,7 +43,7 @@ def categorize(name: str) -> str | None:
 df['category'] = df['scanName'].apply(categorize)
 df = df[df['category'].notna()]
 
-# 7. Pour chaque asset_id + catégorie, ne garder que le scan le plus récent
+# 8. Pour chaque asset_id + catégorie, ne garder que le scan le plus récent
 latest = (
     df
     .sort_values('endTime')
@@ -46,14 +51,14 @@ latest = (
     .last()
 )
 
-# 8. Pivot pour obtenir deux colonnes dans assets
+# 9. Pivot pour obtenir deux colonnes dans assets
 pivot = latest.pivot(
     index='asset_id',
     columns='category',
     values='scan_id'
 )
 
-# 9. Fusionner dans le DataFrame assets original
+# 10. Fusionner dans le DataFrame assets original
 assets_updated = assets.merge(
     pivot,
     left_on='id',
@@ -61,7 +66,6 @@ assets_updated = assets.merge(
     how='left'
 )
 
-# 10. Sauvegarde du nouveau CSV
+# 11. Sauvegarde du nouveau CSV
 assets_updated.to_csv('dim_assets_updated.csv', index=False)
-print("Fichier généré → dim_assets_updated.csv")
-print(assets_updated[['id', 'last_vulnerability_scan', 'last_discovery_scan']].head())
+print("OK — généré → dim_assets_updated.csv")
