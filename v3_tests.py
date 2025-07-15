@@ -1,14 +1,15 @@
 import pandas as pd
 import ast
 import re
-import ace_tools as tools
 
-# 1. Chargement des fichiers CSV
+# 1. Chargement des fichiers
 assets = pd.read_csv('dim_assets.csv')
-scans = pd.read_csv('dim_scans.csv', parse_dates=['startTime', 'endTime'])
-scans = scans.rename(columns={'id': 'scan_id'})
+scans  = pd.read_csv('dim_scans.csv', parse_dates=['startTime', 'endTime'])
 
-# 2. Parsing et explosion de la colonne 'history'
+# 2. Renommer l'ID de scan pour plus de clarté
+scans.rename(columns={'id': 'scan_id'}, inplace=True)
+
+# 3. Déserialisation de la colonne history et explosion en lignes asset↔scan
 assets['history'] = assets['history'].apply(ast.literal_eval)
 asset_scans = (
     assets[['id', 'history']]
@@ -16,39 +17,43 @@ asset_scans = (
     .rename(columns={'id': 'asset_id', 'history': 'scan_id'})
 )
 
-# 3. Jointure pour récupérer les données des scans
-df = asset_scans.merge(scans, on='scan_id')
+# 4. Uniformisation du type de scan_id pour éviter le ValueError
+asset_scans['scan_id'] = pd.to_numeric(asset_scans['scan_id'],
+                                       errors='raise',
+                                       downcast='integer')
+scans['scan_id'] = scans['scan_id'].astype('int64')
 
-# 4. Catégorisation des scans
-def categorize(name):
-    if re.search(r'Vun|Vuln', name, re.I):
-        return 'vuln'
-    elif re.search(r'Auth|Unauth|Discovery', name, re.I):
-        return 'discovery'
+# 5. Jointure pour récupérer les détails de chaque scan
+df = asset_scans.merge(scans, on='scan_id', how='left')
+
+# 6. Catégorisation en deux types de scan
+def categorize(name: str) -> str | None:
+    if re.search(r'Vun|Vuln|Audit', name, re.IGNORECASE):
+        return 'last_vulnerability_scan'
+    elif re.search(r'Auth|Unauth|Discovery', name, re.IGNORECASE):
+        return 'last_discovery_scan'
     else:
         return None
 
 df['category'] = df['scanName'].apply(categorize)
-df = df[df['category'].notnull()]
+df = df[df['category'].notna()]
 
-# 5. Sélection du scan le plus récent par asset et catégorie
+# 7. Sélection du scan le plus récent par asset et catégorie
 latest = (
-    df.sort_values('endTime')
-      .groupby(['asset_id', 'category'], as_index=False)
-      .last()
+    df
+    .sort_values('endTime')
+    .groupby(['asset_id', 'category'], as_index=False)
+    .last()
 )
 
-# 6. Pivot pour créer deux colonnes
+# 8. Pivot pour passer de lignes “asset+cat” à deux colonnes
 pivot = latest.pivot(
     index='asset_id',
     columns='category',
     values='scan_id'
-).rename(columns={
-    'vuln': 'last_vulnerability_scan',
-    'discovery': 'last_discovery_scan'
-})
+)
 
-# 7. Fusion avec le DataFrame assets original
+# 9. Fusion avec le DataFrame assets d’origine
 assets_updated = assets.merge(
     pivot,
     left_on='id',
@@ -56,9 +61,6 @@ assets_updated = assets.merge(
     how='left'
 )
 
-# 8. Sauvegarde du nouveau CSV
-output_path = '/mnt/data/dim_assets_updated.csv'
-assets_updated.to_csv(output_path, index=False)
-
-# 9. Affichage d'un aperçu
-tools.display_dataframe_to_user('Aperçu des assets mis à jour', assets_updated.head())
+# 10. Écriture du fichier CSV mis à jour
+assets_updated.to_csv('dim_assets_updated.csv', index=False)
+print("→ 'dim_assets_updated.csv' généré avec les colonnes last_vulnerability_scan et last_discovery_scan.")
